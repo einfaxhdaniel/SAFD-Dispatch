@@ -1,0 +1,193 @@
+<!DOCTYPE html>
+
+<html lang="de">
+<head>
+<meta charset="UTF-8">
+<title>SAFD Dispatch</title>
+
+<style>
+body{
+    background:#1b1b1b;
+    color:white;
+    font-family:Arial;
+    text-align:center;
+    margin:0;
+}
+
+h1{
+    background:#c62828;
+    padding:20px;
+    margin:0;
+}
+
+/* GRID: 3 Fahrzeuge pro Reihe */
+#fahrzeuge{
+    margin-top:20px;
+    display:grid;
+    grid-template-columns: repeat(3, 1fr);
+    gap:20px;
+    padding:20px;
+    justify-items:center;
+}
+
+.fahrzeug{
+    background:#2b2b2b;
+    border-radius:12px;
+    padding:15px;
+    width:100%;
+    max-width:340px;
+    box-shadow:0 0 10px black;
+}
+
+select,input{
+    margin-top:5px;
+    padding:5px;
+    width:90%;
+    border-radius:6px;
+    border:none;
+    display:block;
+    margin-left:auto;
+    margin-right:auto;
+}
+
+button{
+    margin-top:10px;
+    padding:8px;
+    width:100%;
+    background:#c62828;
+    color:white;
+    border:none;
+    border-radius:8px;
+    cursor:pointer;
+}
+button:hover{
+    background:#ff3d3d;
+}
+
+/* Tablet */
+@media (max-width:900px){
+    #fahrzeuge{
+        grid-template-columns: repeat(2, 1fr);
+    }
+}
+
+/* Handy */
+@media (max-width:500px){
+    #fahrzeuge{
+        grid-template-columns: 1fr;
+    }
+}
+</style>
+
+</head>
+
+<body>
+
+<h1>🚒 SAFD Dispatch</h1>
+<div id="fahrzeuge">Lade Fahrzeuge...</div>
+
+<script type="module">
+import { initializeApp } from "https://www.gstatic.com/firebasejs/12.9.0/firebase-app.js";
+import { getFirestore, collection, onSnapshot, doc, updateDoc } from "https://www.gstatic.com/firebasejs/12.9.0/firebase-firestore.js";
+
+const firebaseConfig = {
+  apiKey: "AIzaSyBTXuWytv3hkmEy2SfSb8Sx2FHAyB4YEHo",
+  authDomain: "safd-dispatch.firebaseapp.com",
+  projectId: "safd-dispatch",
+  storageBucket: "safd-dispatch.firebasestorage.app",
+  messagingSenderId: "28484661868",
+  appId: "1:28484661868:web:50f82ac5e10635a9aede49"
+};
+
+const app = initializeApp(firebaseConfig);
+const db = getFirestore(app);
+const liste = document.getElementById("fahrzeuge");
+
+function ladeLiveFahrzeuge(){
+onSnapshot(collection(db,"vehicles"),(snapshot)=>{
+    liste.innerHTML="";
+
+    snapshot.forEach((fahrzeug)=>{
+        const data = fahrzeug.data();
+
+        let crew;
+        if(Array.isArray(data.crew)) crew=data.crew;
+        else if(typeof data.crew==="string" && data.crew!=="") crew=[data.crew];
+        else crew=[""];
+
+        const div=document.createElement("div");
+        div.className="fahrzeug";
+
+        let crewInputs="";
+        crew.forEach((name,index)=>{
+            crewInputs += `<input class="crewInput" data-id="${fahrzeug.id}" data-index="${index}" value="${name}" placeholder="Name">`;
+        });
+
+        crewInputs += `<input class="crewInput new" data-id="${fahrzeug.id}" data-index="${crew.length}" placeholder="+ Neuer Name">`;
+
+        div.innerHTML=`
+            <h2>${data.name || "Fahrzeug"}</h2>
+
+            <label>Status:</label>
+            <select id="status-${fahrzeug.id}">
+				<option ${data.status=="Einsatzbereit über Funk"?"selected":""}>Off-Duty</option>
+                <option ${data.status=="Einsatzbereit über Funk"?"selected":""}>Einsatzbereit über Funk</option>
+                <option ${data.status=="Einsatzbereit auf Wache"?"selected":""}>Einsatzbereit auf Wache</option>
+                <option ${data.status=="Im Einsatz"?"selected":""}>Im Einsatz</option>
+                <option ${data.status=="Nicht Einsatzbereit"?"selected":""}>Nicht Einsatzbereit</option>
+            </select>
+
+            <label>Besatzung:</label>
+            <div id="crew-${fahrzeug.id}">${crewInputs}</div>
+
+            <button onclick="speichern('${fahrzeug.id}')">Speichern</button>
+        `;
+
+        liste.appendChild(div);
+    });
+
+    document.querySelectorAll(".crewInput").forEach(input=>{
+        input.addEventListener("change",autoAddField);
+    });
+});
+}
+
+function autoAddField(e){
+    if(!e.target.classList.contains("new")) return;
+    if(e.target.value.trim()=="") return;
+
+    const container=e.target.parentElement;
+
+    const newInput=document.createElement("input");
+    newInput.className="crewInput new";
+    newInput.placeholder="+ Neuer Name";
+    newInput.dataset.id=e.target.dataset.id;
+    newInput.dataset.index=parseInt(e.target.dataset.index)+1;
+
+    e.target.classList.remove("new");
+    container.appendChild(newInput);
+    newInput.addEventListener("change",autoAddField);
+}
+
+window.speichern = async function(id){
+    const status=document.getElementById(`status-${id}`).value;
+    const inputs=document.querySelectorAll(`#crew-${id} input`);
+
+    let crew=[];
+    inputs.forEach(input=>{
+        if(input.value.trim()!="") crew.push(input.value.trim());
+    });
+
+    await updateDoc(doc(db,"vehicles",id),{
+        status:status,
+        crew:crew
+    });
+
+    alert("Gespeichert!");
+}
+
+ladeLiveFahrzeuge();
+</script>
+
+</body>
+</html>
