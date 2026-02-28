@@ -37,6 +37,25 @@ h1{
     width:150px;
 }
 
+/* DISPATCH NOTE (KLEINER GEMACHT) */
+#dispatchBox{
+    background:#2b2b2b;
+    padding:15px;
+    margin:20px auto;
+    border-radius:12px;
+    box-shadow:0 0 15px black;
+    max-width:700px;
+}
+
+#dispatchNote{
+    width:95%;
+    height:70px;
+    border-radius:8px;
+    border:none;
+    padding:8px;
+    resize:none;
+}
+
 /* GRID */
 #fahrzeuge{
     margin-top:20px;
@@ -57,26 +76,13 @@ h1{
     transition:0.3s;
 }
 
-/* STATUS FARBEN */
-.status-green{
-    border:3px solid #00e676;
-    box-shadow:0 0 20px #00e676;
-}
-
-.status-blue{
-    border:3px solid #2196f3;
-    box-shadow:0 0 20px #2196f3;
-}
-
-.status-red{
-    border:3px solid #ff3d3d;
-    box-shadow:0 0 20px red;
-    background:#3a1f1f;
-}
+.status-green{ border:3px solid #00e676; box-shadow:0 0 20px #00e676; }
+.status-blue{ border:3px solid #2196f3; box-shadow:0 0 20px #2196f3; }
+.status-red{ border:3px solid #ff3d3d; box-shadow:0 0 20px red; background:#3a1f1f; }
 
 select,input{
     margin-top:5px;
-    padding:5px;
+    padding:6px;
     width:90%;
     border-radius:6px;
     border:none;
@@ -118,14 +124,19 @@ button:hover{background:#ff3d3d;}
     <div id="user"></div>
 </div>
 
+<!-- Globaler Dispatch -->
+<div id="dispatchBox" style="display:none;">
+    <h2>📞 Aktueller Einsatz</h2>
+    <textarea id="dispatchNote" placeholder="SAFD, wo ist der Einsatzort? Was ist passiert? Wie viele verletzte gibt es?..."></textarea>
+</div>
+
 <div id="fahrzeuge">Bitte anmelden...</div>
 
 <script type="module">
 import { initializeApp } from "https://www.gstatic.com/firebasejs/12.9.0/firebase-app.js";
-import { getFirestore, collection, onSnapshot, doc, updateDoc } from "https://www.gstatic.com/firebasejs/12.9.0/firebase-firestore.js";
+import { getFirestore, collection, onSnapshot, doc, updateDoc, setDoc } from "https://www.gstatic.com/firebasejs/12.9.0/firebase-firestore.js";
 import { getAuth, signInWithEmailAndPassword, onAuthStateChanged, signOut } from "https://www.gstatic.com/firebasejs/12.9.0/firebase-auth.js";
 
-/* DEINE ORIGINAL CONFIG WIEDER EINSETZEN */
 const firebaseConfig = {
   apiKey: "AIzaSyBTXuWytv3hkmEy2SfSb8Sx2FHAyB4YEHo",
   authDomain: "safd-dispatch.firebaseapp.com",
@@ -141,67 +152,71 @@ const auth = getAuth(app);
 const liste = document.getElementById("fahrzeuge");
 
 /* LOGIN */
-document.getElementById("loginBtn").onclick = async ()=>{
-    const email = document.getElementById("email").value;
-    const password = document.getElementById("password").value;
-
+loginBtn.onclick = async ()=>{
     try{
-        await signInWithEmailAndPassword(auth,email,password);
-    }catch(error){
-        alert("Login fehlgeschlagen: " + error.message);
+        await signInWithEmailAndPassword(auth,email.value,password.value);
+    }catch{
+        alert("Login fehlgeschlagen");
     }
 };
 
-document.getElementById("logoutBtn").onclick = ()=> signOut(auth);
+logoutBtn.onclick = ()=> signOut(auth);
 
-/* AUTH STATE */
+/* AUTH */
 onAuthStateChanged(auth, user=>{
-    const loginBtn = document.getElementById("loginBtn");
-    const logoutBtn = document.getElementById("logoutBtn");
-    const userDiv = document.getElementById("user");
-
     if(user){
-        userDiv.innerHTML="Angemeldet: "+user.email;
-        logoutBtn.style.display="inline-block";
+        document.getElementById("user").innerHTML="Angemeldet: "+user.email;
         loginBtn.style.display="none";
+        logoutBtn.style.display="inline-block";
+        document.getElementById("dispatchBox").style.display="block";
+        ladeDispatch();
         ladeLiveFahrzeuge();
     }else{
-        userDiv.innerHTML="";
-        logoutBtn.style.display="none";
+        document.getElementById("user").innerHTML="";
         loginBtn.style.display="inline-block";
+        logoutBtn.style.display="none";
+        document.getElementById("dispatchBox").style.display="none";
         liste.innerHTML="Bitte anmelden...";
     }
 });
 
-/* FAHRZEUGE LADEN */
+/* GLOBAL DISPATCH */
+function ladeDispatch(){
+    const dispatchRef = doc(db,"dispatch","current");
+
+    onSnapshot(dispatchRef,(docSnap)=>{
+        if(docSnap.exists()){
+            document.getElementById("dispatchNote").value = docSnap.data().text || "";
+        }
+    });
+
+    document.getElementById("dispatchNote").onchange = async (e)=>{
+        await setDoc(dispatchRef,{text:e.target.value});
+    };
+}
+
+/* LIVE FAHRZEUGE */
 function ladeLiveFahrzeuge(){
 onSnapshot(collection(db,"vehicles"),(snapshot)=>{
     liste.innerHTML="";
-
     snapshot.forEach((fahrzeug)=>{
         const data = fahrzeug.data();
         const crew = Array.isArray(data.crew) ? data.crew : [];
 
         let statusClass="";
-        if(data.status==="Einsatzbereit über Funk" || data.status==="Einsatzbereit auf Wache"){
-            statusClass="status-green";
-        }
-        else if(data.status==="Nicht Einsatzbereit"){
-            statusClass="status-blue";
-        }
-        else if(data.status==="Im Einsatz"){
-            statusClass="status-red";
-        }
+        if(data.status==="Einsatzbereit über Funk" || data.status==="Einsatzbereit auf Wache") statusClass="status-green";
+        else if(data.status==="Nicht Einsatzbereit") statusClass="status-blue";
+        else if(data.status==="Im Einsatz") statusClass="status-red";
 
         const div=document.createElement("div");
         div.className="fahrzeug "+statusClass;
 
         let crewInputs="";
         crew.forEach(name=>{
-            crewInputs += `<input class="crewInput" value="${name}" placeholder="Name">`;
+            crewInputs += `<input class="crewInput" value="${name}" data-id="${fahrzeug.id}">`;
         });
 
-        crewInputs += `<input class="crewInput new" placeholder="+ Neuer Name">`;
+        crewInputs += `<input class="crewInput new" placeholder="+ Neuer Name" data-id="${fahrzeug.id}">`;
 
         div.innerHTML=`
             <h2>${data.name || "Fahrzeug"}</h2>
@@ -219,83 +234,57 @@ onSnapshot(collection(db,"vehicles"),(snapshot)=>{
             <div id="crew-${fahrzeug.id}">${crewInputs}</div>
 
             <label>Standort (PLZ):</label>
-            <input id="location-${fahrzeug.id}" 
-                   value="${data.location || ""}" 
-                   placeholder="z.B. 20357">
-
+            <input id="location-${fahrzeug.id}" value="${data.location || ""}">
         `;
 
         liste.appendChild(div);
+
+        document.getElementById(`status-${fahrzeug.id}`).onchange = e=>{
+            updateDoc(doc(db,"vehicles",fahrzeug.id),{status:e.target.value});
+        };
+
+        document.getElementById(`location-${fahrzeug.id}`).onchange = e=>{
+            updateDoc(doc(db,"vehicles",fahrzeug.id),{location:e.target.value});
+        };
     });
 
     document.querySelectorAll(".crewInput").forEach(input=>{
-        input.addEventListener("input",autoAddField);
+        input.addEventListener("change", saveCrew);
+        input.addEventListener("input", autoAddField);
     });
-	/* AUTO SAVE STATUS + LOCATION */
-snapshot.forEach((fahrzeug)=>{
-    const statusSelect = document.getElementById(`status-${fahrzeug.id}`);
-    const locationInput = document.getElementById(`location-${fahrzeug.id}`);
-
-    if(statusSelect){
-        statusSelect.addEventListener("change", async ()=>{
-            await updateDoc(doc(db,"vehicles",fahrzeug.id),{
-                status: statusSelect.value
-            });
-        });
-    }
-
-    if(locationInput){
-        locationInput.addEventListener("change", async ()=>{
-            await updateDoc(doc(db,"vehicles",fahrzeug.id),{
-                location: locationInput.value
-            });
-        });
-    }
-});
 });
 }
 
-/* CREW FELDER */
+/* AUTO FIELD */
 function autoAddField(e){
     const input = e.target;
-    const container = input.parentElement;
-
     if(input.classList.contains("new") && input.value.trim() !== ""){
         input.classList.remove("new");
-
         const newInput=document.createElement("input");
         newInput.className="crewInput new";
         newInput.placeholder="+ Neuer Name";
-
-        container.appendChild(newInput);
-        newInput.addEventListener("input",autoAddField);
+        newInput.setAttribute("data-id",input.getAttribute("data-id"));
+        input.parentElement.appendChild(newInput);
+        newInput.addEventListener("change", saveCrew);
+        newInput.addEventListener("input", autoAddField);
     }
 
     if(input.value.trim()==="" && !input.classList.contains("new")){
         input.remove();
+        saveCrew(e);
     }
 }
 
-/* SPEICHERN */
-window.speichern = async function(id){
-    const status=document.getElementById(`status-${id}`).value;
-    const location=document.getElementById(`location-${id}`).value;
+async function saveCrew(e){
+    const id = e.target.getAttribute("data-id");
     const inputs=document.querySelectorAll(`#crew-${id} input`);
-
     let crew=[];
     inputs.forEach(input=>{
-        if(input.value.trim()!==""){
+        if(input.value.trim()!=="" && !input.classList.contains("new")){
             crew.push(input.value.trim());
         }
     });
-
-    await updateDoc(doc(db,"vehicles",id),{
-        status:status,
-        crew:crew,
-        location:location
-    });
-
-    alert("Gespeichert!");
+    await updateDoc(doc(db,"vehicles",id),{crew:crew});
 }
 </script>
 </body>
